@@ -16,6 +16,7 @@ public interface IConstants
     public static final String DT_VERSION_61 = "6.1.0.0000";
     public static final String DT_VERSION_62 = "6.2.0.0000";
     public static final String DT_VERSION_63 = "6.3.0.0000";
+    public static final String DT_VERSION_65 = "6.5.0.0000";
     // In future, add new versions here (6.4, 7.0 etc.)
     
     public static final String DO_NOT_CHANGE_MSG = "Do Not Change";
