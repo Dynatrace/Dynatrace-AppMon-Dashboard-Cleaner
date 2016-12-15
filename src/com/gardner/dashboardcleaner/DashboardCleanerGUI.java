@@ -7,12 +7,12 @@ package com.gardner.dashboardcleaner;
 
 import java.awt.event.ItemEvent;
 import java.io.File;
-import java.util.Scanner;
+import java.util.List;
+
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.filechooser.FileFilter;
-import javax.swing.filechooser.FileNameExtensionFilter;
+
+import org.w3c.dom.Document;
 
 /**
  *
@@ -58,13 +58,13 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
         label_about_dashboard_cleaner = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
-        setTitle("Dashboard Cleaner v1.1");
+        setTitle("Dashboard Cleaner v1.2");
 
         textfield_system_profile_name.setMinimumSize(new java.awt.Dimension(25, 26));
         textfield_system_profile_name.setPreferredSize(new java.awt.Dimension(120, 26));
 
         button_select_process.setFont(new java.awt.Font("Tahoma", 0, 18)); // NOI18N
-        button_select_process.setText("Select & Process Dashboard");
+        button_select_process.setText("Select & Process Dashboard or Folder");
         button_select_process.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 button_select_processActionPerformed(evt);
@@ -77,7 +77,7 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
         label_target_dt_version.setFont(new java.awt.Font("Dialog", 1, 12)); // NOI18N
         label_target_dt_version.setText("Target Dynatrace Version:");
 
-        combobox_dt_version.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Do Not Change", "5.6", "6.0", "6.1", "6.2", "6.3" }));
+        combobox_dt_version.setModel(new javax.swing.DefaultComboBoxModel(new String[] { "Do Not Change", "5.6", "6.0", "6.1", "6.2", "6.3", "6.5" }));
 
         label_dashboard_author.setFont(new java.awt.Font("Dialog", 1, 12)); // NOI18N
         label_dashboard_author.setText("Dashboard Author:");
@@ -138,7 +138,7 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
             }
         });
 
-        label_about_dashboard_cleaner.setText("Dashboard Cleaner v1.1 by Adam Gardner (adam.gardner@dynatrace.com)");
+        label_about_dashboard_cleaner.setText("Dashboard Cleaner v1.2 by Adam Gardner (adam.gardner@dynatrace.com)");
         label_about_dashboard_cleaner.setEnabled(false);
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
@@ -249,10 +249,8 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
     }// </editor-fold>//GEN-END:initComponents
 
     private void button_select_processActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_button_select_processActionPerformed
-        // TODO add your handling code here:
         String strSystemProfileName = textfield_system_profile_name.getText();
         String strTargetVersion = (String) combobox_dt_version.getSelectedItem();
-        // START TODO
         String strAuthor = textfield_author.getText();
         String strLastModifiedBy = textfield_modifiedby.getText();
         String strAutoRefreshString = (String) combobox_autorefresh_toggle.getSelectedItem(); // Yes or No
@@ -264,74 +262,76 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
         String strDashboardColourScheme = (String) combobox_colour_scheme.getSelectedItem(); // Day (Black Text and White Background), Night (White Text and Black Background)
         
         JFileChooser oFileChooser = new JFileChooser();
-        FileNameExtensionFilter filter = new FileNameExtensionFilter("Dashboard XML Files (.xml)","xml");
-        oFileChooser.setFileFilter(filter);
+
+        oFileChooser.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
         oFileChooser.showOpenDialog(this);
-        
+        oFileChooser.setAcceptAllFileFilterUsed(false);
         File oFile = oFileChooser.getSelectedFile();
         boolean bSuccess = false;
         
         // Handle the case where a user clicks cancel
         if (oFile == null) return;
         
-        if (!oFile.getName().endsWith(".dashboard.xml"))
+        /************************
+         *    MAIN PROCESSING
+         ************************/
+        boolean bFullSuccess = true;
+
+        try
         {
-            JOptionPane.showMessageDialog(null, "Invalid dashboard file. Please try again.", "Severe Error", JOptionPane.ERROR_MESSAGE);
-        }
-        else
-        {
-            /************************
-             *    MAIN PROCESSING
-             ************************/
-            try
-            {
-                DashboardProcessor oProcessor = new DashboardProcessor(oFileChooser.getSelectedFile());
-                oProcessor.setSystemProfileName(strSystemProfileName); // Rule 1
-                oProcessor.setAuthorModifiedByName(strAuthor, strLastModifiedBy); // Rule 2 & 3
-                oProcessor.setTimeframe(strDashboardTimeframe);
+            DashboardProcessor oProcessor = new DashboardProcessor(oFileChooser.getSelectedFile());
+            
+            
+            // Add support for multiple dashboards
+        	List<Document> oDashboardList = oProcessor.getDashboardList();
+        	for (Document oDoc : oDashboardList)
+        	{
+                oProcessor.setSystemProfileName(strSystemProfileName,oDoc); // Rule 1
+                oProcessor.setAuthorModifiedByName(strAuthor, strLastModifiedBy,oDoc); // Rule 2 & 3
+                oProcessor.setTimeframe(strDashboardTimeframe,oDoc);
                         
                 if (strAutoRefreshString.equalsIgnoreCase(IConstants.YES))
                 {
                     String[] astrParts = strAutoRefreshTime.split(" ");
                     String strTime = astrParts[0];
                     String strUnit = astrParts[1].toUpperCase(); // Must be uppercase to satisfy XML specification.
-                    oProcessor.setAutoRefresh(true,strTime,strUnit);
+                    oProcessor.setAutoRefresh(true,strTime,strUnit,oDoc);
                 }
                 else
                 {
                     /*
                      * Somehow this sets it to 5 MINUTES. I have no idea how it does this, BUT it still works OK when opened in the client. 
                     */
-                    oProcessor.setAutoRefresh(false, "NULL", "NULL");
+                    oProcessor.setAutoRefresh(false, "NULL", "NULL",oDoc);
                 }
                 
-                if (!strTargetVersion.equals(IConstants.DO_NOT_CHANGE_MSG)) oProcessor.setTargetVersion(strTargetVersion);
-
-                oProcessor.drilldownsNewDashboard(strOpenDrilldownsNewWindow);
-                
-                oProcessor.setDayColourScheme(strDashboardColourScheme);
-                bSuccess = oProcessor.save();
-            }
-            catch (Exception e)
-            {
-                JOptionPane.showMessageDialog(null, "Invalid dashboard file. Please try again.", "Severe Error", JOptionPane.ERROR_MESSAGE);
-            }
-            
-            if (bSuccess) JOptionPane.showMessageDialog(null, "Dashboard successfully processed. Look in the original directory for the _clean.dashboard.xml file", "Dashboard Processing Complete", JOptionPane.INFORMATION_MESSAGE);
-            
+                if (!strTargetVersion.equals(IConstants.DO_NOT_CHANGE_MSG)) oProcessor.setTargetVersion(strTargetVersion, oDoc);
+                oProcessor.drilldownsNewDashboard(strOpenDrilldownsNewWindow,oDoc);
+                oProcessor.setDayColourScheme(strDashboardColourScheme,oDoc);
+                bSuccess = oProcessor.save(oDoc);
+                if (!bSuccess) bFullSuccess = false; 
+        	}
+        }
+        catch (Exception e)
+        {
+            JOptionPane.showMessageDialog(null, "Invalid dashboard file. Please try again.", "Severe Error", JOptionPane.ERROR_MESSAGE);
         }
         
-    }//GEN-LAST:event_button_select_processActionPerformed
+        if (bFullSuccess) JOptionPane.showMessageDialog(null, "Dashboard(s) successfully processed. Look in the original directory for the _clean.dashboard.xml file(s)", "Dashboard Processing Complete", JOptionPane.INFORMATION_MESSAGE);
+        if (!bFullSuccess) JOptionPane.showMessageDialog(null, "Sorry, something went wrong. Please try again or contact the utility maintainer.", "Error", JOptionPane.ERROR_MESSAGE);
+            
+        
+    }
 
     private void combobox_autorefresh_toggleItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_combobox_autorefresh_toggleItemStateChanged
-        // TODO add your handling code here:
+    	
         String strSelection = (String) evt.getItem();
         /*
          * If we're toggling the autorefresh to on, show the timeframe selection
          * otherwise, disable the timeframe.
          * TODO - Remember when finally processing, if this is no, ignore the timeframe.
          */
-        if (strSelection.equalsIgnoreCase("yes") && evt.getStateChange() == ItemEvent.SELECTED)
+        if (strSelection.equalsIgnoreCase(IConstants.YES) && evt.getStateChange() == ItemEvent.SELECTED)
         {
             //If item is Yes, enable the timeframe combobox.
             combobox_autorefresh_timeframe.setEnabled(true);
@@ -344,15 +344,12 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
     }//GEN-LAST:event_combobox_autorefresh_toggleItemStateChanged
 
     private void combobox_drilldownsItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_combobox_drilldownsItemStateChanged
-        // TODO add your handling code here:
     }//GEN-LAST:event_combobox_drilldownsItemStateChanged
 
     private void combobox_colour_schemeItemStateChanged(java.awt.event.ItemEvent evt) {//GEN-FIRST:event_combobox_colour_schemeItemStateChanged
-        // TODO add your handling code here:
     }//GEN-LAST:event_combobox_colour_schemeItemStateChanged
 
     private void combobox_autorefresh_timeframeActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_combobox_autorefresh_timeframeActionPerformed
-        // TODO add your handling code here:
     }//GEN-LAST:event_combobox_autorefresh_timeframeActionPerformed
 
     /**
@@ -391,7 +388,6 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
         });
     }
 
-    // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton button_select_process;
     private javax.swing.JComboBox combobox_autorefresh_timeframe;
     private javax.swing.JComboBox combobox_autorefresh_toggle;
@@ -412,5 +408,4 @@ public class DashboardCleanerGUI extends javax.swing.JFrame {
     private javax.swing.JTextField textfield_author;
     private javax.swing.JTextField textfield_modifiedby;
     private javax.swing.JTextField textfield_system_profile_name;
-    // End of variables declaration//GEN-END:variables
 }
