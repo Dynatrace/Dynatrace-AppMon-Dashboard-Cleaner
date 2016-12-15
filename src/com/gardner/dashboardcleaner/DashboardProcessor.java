@@ -1,21 +1,14 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package com.gardner.dashboardcleaner;
 
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.DocumentBuilder;
-import org.w3c.dom.Document;
-import org.w3c.dom.NodeList;
-import org.w3c.dom.Node;
-import org.w3c.dom.Element;
 import java.io.File;
-import java.util.List;
+import java.io.FilenameFilter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Result;
 import javax.xml.transform.Source;
@@ -25,24 +18,58 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
 public class DashboardProcessor
 {
-    private File m_oDashboard;
-    private Document m_oDoc;
+    private File m_oDashboardFileOrDir;
+    //private Document oDoc;
+    private boolean m_bProcessingDirectory = false;
+    //private List<Document> oDocList = new ArrayList<Document>();
+    private HashMap<Document, File> oDocMap = new HashMap<Document, File>();
     
     public DashboardProcessor(File oDashboard)
     {
-        m_oDashboard = oDashboard;
+        m_oDashboardFileOrDir = oDashboard;
         
+        // Set flag if we're processing a directory
+        if (m_oDashboardFileOrDir.isDirectory()) m_bProcessingDirectory = true;
+       
         try
         {
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-            m_oDoc = dBuilder.parse(m_oDashboard);
+            if (m_oDashboardFileOrDir.isDirectory())
+            {
+            	//FileNameExtensionFilter filter = new FileNameExtensionFilter("Dashboard XML Files (.xml)","xml");
+            	FilenameFilter filter = new FilenameFilter() {
+            		
+					@Override
+					public boolean accept(File dir, String name) {
+						if (name.endsWith(".dashboard.xml")) return true;
+						return false;
+					}
+				};
+				
+            	File[] a_Dashboards = m_oDashboardFileOrDir.listFiles(filter);
+            	
+            	for (File oFile : a_Dashboards)
+            	{
+            		oDocMap.put(dBuilder.parse(oFile), oFile);
+            	}
+            	
+            }
+            else
+            {
+            	oDocMap.put(dBuilder.parse(m_oDashboardFileOrDir), m_oDashboardFileOrDir);
+            }
 			
             //optional, but recommended
             //read this - http://stackoverflow.com/questions/13786607/normalization-in-dom-parsing-with-java-how-does-it-work
-            m_oDoc.getDocumentElement().normalize();
+            for (Document oDoc : oDocMap.keySet()) oDoc.getDocumentElement().normalize();
         }
         catch (Exception e)
         {
@@ -54,7 +81,7 @@ public class DashboardProcessor
      * Rule 1
      * Set System Profile name on various fields.
     */
-    public void setSystemProfileName(String strSysProfName)
+    public void setSystemProfileName(String strSysProfName,Document oDoc)
     {    
         List<String> oTagList = new ArrayList<String>();
         oTagList.add("dashboardconfig");
@@ -62,7 +89,7 @@ public class DashboardProcessor
         
         for (String strTag : oTagList)
         {
-            NodeList nList = m_oDoc.getElementsByTagName(strTag); 
+            NodeList nList = oDoc.getElementsByTagName(strTag); 
         
             // For each chart source node, set each variable.
             for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
@@ -80,7 +107,7 @@ public class DashboardProcessor
         
         for (String strTag : oTagList)
         {
-            NodeList nList = m_oDoc.getElementsByTagName(strTag); 
+            NodeList nList = oDoc.getElementsByTagName(strTag); 
         
             // For each chart source node, set each variable.
             for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
@@ -98,9 +125,9 @@ public class DashboardProcessor
     * reset author and modifiedby name to admin
     in <dashboardconfig node
     */
-    public void setAuthorModifiedByName(String strAuthorName, String strModifiedByName)
+    public void setAuthorModifiedByName(String strAuthorName, String strModifiedByName, Document oDoc)
     {
-        NodeList nList = m_oDoc.getElementsByTagName("dashboardconfig"); 
+        NodeList nList = oDoc.getElementsByTagName("dashboardconfig"); 
         
         // For each chart source node, set each variable.
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
@@ -117,7 +144,7 @@ public class DashboardProcessor
      set locationassource to false
      Occurs in 2 places: dashboardconfig and portletconfig tags
     */
-    private void setLocationAsSource()
+    private void setLocationAsSource(Document oDoc)
     { 
         List<String> oTagList = new ArrayList<String>();
         oTagList.add("dashboardconfig");
@@ -125,7 +152,7 @@ public class DashboardProcessor
         
         for (String strTag : oTagList)
         {
-            NodeList nList = m_oDoc.getElementsByTagName(strTag); 
+            NodeList nList = oDoc.getElementsByTagName(strTag); 
         
             // For each chart source node, set each variable.
             for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
@@ -141,17 +168,14 @@ public class DashboardProcessor
     /*
     * Rule 5
     */
-    private void setChartSourcePositionEntries()
+    private void setChartSourcePositionEntries(Document oDoc)
     {
-        //Document m_oDoc = doc;
-         NodeList nList = m_oDoc.getElementsByTagName("chartsource"); 
+         NodeList nList = oDoc.getElementsByTagName("chartsource"); 
           // For each chart source node, set each variable.
             for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
             {
                 Node oNode = nList.item(iTemp);
-
                 Element eElement = (Element) oNode;
-                
                 if (eElement.getAttribute("position").equals("-1")) eElement.setAttribute("position", "1");
             }
     }
@@ -160,23 +184,21 @@ public class DashboardProcessor
     * constants are SECONDS, HOURS (1hr is represented as 1 HOURS) and DAYS
     * 24hr is represented as 1 DAYS
     */
-    public void setAutoRefresh(boolean bEnable, String strTime, String strUnit)
+    public void setAutoRefresh(boolean bEnable, String strTime, String strUnit, Document oDoc)
     {
         // Translate 1 hour to HOURS
         if (strUnit.equalsIgnoreCase(IConstants.HOUR))
         {
-            System.out.println("1 hour to 1 HOURS");
             strUnit = IConstants.HOURS;
         }
         // Translate 24 hours to 1 day
         if (strTime.equalsIgnoreCase("24"))
         {
-            System.out.println("24hrs to 1 DAYS");
             strTime = "1";
             strUnit = IConstants.DAYS;
         }
         
-        NodeList nList = m_oDoc.getElementsByTagName("autorefreshconfig");    
+        NodeList nList = oDoc.getElementsByTagName("autorefreshconfig");    
 
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
         {
@@ -184,10 +206,7 @@ public class DashboardProcessor
 
             Element eElement = (Element) oNode;
             
-            if (!bEnable)
-            {
-                eElement.setAttribute("enabled","false");
-            }
+            if (!bEnable) eElement.setAttribute("enabled","false");
             else
             {   
                 eElement.setAttribute("enabled","true");
@@ -204,7 +223,7 @@ public class DashboardProcessor
      * </criterion>
      * Sets the type attribute to Auto
      */
-    public void setTimeframe(String strDashboardTimeframe)
+    public void setTimeframe(String strDashboardTimeframe, Document oDoc)
     {
         /* Translate GUI Options into XML-valid options
         * XML Options		GUI Options
@@ -215,7 +234,7 @@ public class DashboardProcessor
         * Last 6h		Last 6 hours
         * Last 24h		Last 24 hours
         * Last 72h		Last 72 hours
-        * Last 7d			Last Week
+        * Last 7d		Last Week
         * Last 30d		Last Month
         * Last 365d		Last Year
         */
@@ -230,7 +249,7 @@ public class DashboardProcessor
         if (strDashboardTimeframe.equals("Last Month")) strDashboardTimeframe = "Last 30d";
         if (strDashboardTimeframe.equals("Last Year")) strDashboardTimeframe = "Last 365d";
         
-        NodeList nList = m_oDoc.getElementsByTagName("timeframe");    
+        NodeList nList = oDoc.getElementsByTagName("timeframe");    
 
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
         {
@@ -243,7 +262,7 @@ public class DashboardProcessor
     }
     
     // Rule 8
-    private void setChartSourceVariables()
+    private void setChartSourceVariables(Document oDoc)
     {
         
         String strChartSource = "chartsource";
@@ -254,7 +273,7 @@ public class DashboardProcessor
         oAttributeMap.put("colorinheritancemode","parent");
         oAttributeMap.put("fetchmeasurecolor","false");
         
-        NodeList nList = m_oDoc.getElementsByTagName(strChartSource); 
+        NodeList nList = oDoc.getElementsByTagName(strChartSource); 
         
         // For each chart source node, set each variable.
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
@@ -273,11 +292,11 @@ public class DashboardProcessor
     * <dashboardconfig localizationenabled="false"
     * Sets the localizationenabled flag to false.
     */
-    private void setLocalization()
+    private void setLocalization(Document oDoc)
     {       
         String strDashboardConfig = "localizationenabled";
         
-        NodeList nList = m_oDoc.getElementsByTagName("dashboardconfig");    
+        NodeList nList = oDoc.getElementsByTagName("dashboardconfig");    
 
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
         {
@@ -294,7 +313,7 @@ public class DashboardProcessor
     *      <dashboardconfig memento.version="6.1.0.8154"
     * to the relevant versions
     */
-    public void setTargetVersion(String strTargetVersion)
+    public void setTargetVersion(String strTargetVersion, Document oDoc)
     {
      
         // GUI input is user friendly 5.6 - we need it in the format 5.6.0.0000 so let's transform.
@@ -308,7 +327,7 @@ public class DashboardProcessor
         
         for (String strKey : oVersionNodes.keySet())
         {
-            NodeList nList = m_oDoc.getElementsByTagName(strKey);    
+            NodeList nList = oDoc.getElementsByTagName(strKey);    
             
             for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
             {
@@ -321,6 +340,7 @@ public class DashboardProcessor
                 else if (strTargetVersion.equals(IConstants.DT_VERSION_61)) eElement.setAttribute(oVersionNodes.get(strKey), IConstants.DT_VERSION_61);
                 else if (strTargetVersion.equals(IConstants.DT_VERSION_62)) eElement.setAttribute(oVersionNodes.get(strKey), IConstants.DT_VERSION_62);
                 else if (strTargetVersion.equals(IConstants.DT_VERSION_63)) eElement.setAttribute(oVersionNodes.get(strKey), IConstants.DT_VERSION_63);
+                else if (strTargetVersion.equals(IConstants.DT_VERSION_65)) eElement.setAttribute(oVersionNodes.get(strKey), IConstants.DT_VERSION_65);
                 // Future versions possible here.
             }
         }
@@ -330,11 +350,11 @@ public class DashboardProcessor
     /* Rule 12
     * <dashboardconfig opendrilldowninnewdashboard="true".....
     */
-    public void drilldownsNewDashboard(String strDrilldownsNewDashboard)
+    public void drilldownsNewDashboard(String strDrilldownsNewDashboard, Document oDoc)
     {
         String strDashboardConfig = "opendrilldowninnewdashboard";
         
-        NodeList nList = m_oDoc.getElementsByTagName("dashboardconfig");    
+        NodeList nList = oDoc.getElementsByTagName("dashboardconfig");    
 
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
         {
@@ -342,20 +362,14 @@ public class DashboardProcessor
 
             Element eElement = (Element) oNode;
             
-            if (strDrilldownsNewDashboard.equalsIgnoreCase(IConstants.YES))
-            {
-                eElement.setAttribute(strDashboardConfig,"true");
-            }
-            else
-            {
-                eElement.setAttribute(strDashboardConfig,"false");
-            }
+            if (strDrilldownsNewDashboard.equalsIgnoreCase(IConstants.YES)) eElement.setAttribute(strDashboardConfig,"true");
+            else eElement.setAttribute(strDashboardConfig,"false");
         }
     }
     
     /* Rule 13
     */
-    public void setDayColourScheme(String strDayNightSelection)
+    public void setDayColourScheme(String strDayNightSelection, Document oDoc)
     {
         /* Original string comes from UI as either:
          *    - Day (Black Text and White Background)
@@ -365,7 +379,7 @@ public class DashboardProcessor
          */
         strDayNightSelection = strDayNightSelection.substring(0, strDayNightSelection.indexOf(" "));
         
-        NodeList nList = m_oDoc.getElementsByTagName("designconfig");
+        NodeList nList = oDoc.getElementsByTagName("designconfig");
 
         for (int iTemp = 0; iTemp < nList.getLength(); iTemp++)
         {
@@ -377,13 +391,24 @@ public class DashboardProcessor
         }
     }
     
-    
-    private void doFinalProcessing()
+    // Helper method: determine whether we're processing a directory or not
+    public boolean processingDirectory()
     {
-        setLocationAsSource();
-        setChartSourcePositionEntries();
-        setChartSourceVariables();
-        setLocalization();
+    	return m_bProcessingDirectory;
+    }
+    
+    // Get list of all Document objects - these correspond to a dashboard per element
+    public List<Document> getDashboardList()
+    {
+    	return new ArrayList<Document>(oDocMap.keySet());
+    }
+    
+    private void doFinalProcessing(Document oDoc)
+    {
+        setLocationAsSource(oDoc);
+        setChartSourcePositionEntries(oDoc);
+        setChartSourceVariables(oDoc);
+        setLocalization(oDoc);
     }
     
     /*
@@ -392,28 +417,29 @@ public class DashboardProcessor
     * with tools like BeyondCompare difficult.
     * No idea why, but it's an enhancement possibility.
     */
-    public boolean save()
+    public boolean save(Document oDoc)
     {
-       doFinalProcessing(); // Non-GUI-configurable options.
+       doFinalProcessing(oDoc); // Non-GUI-configurable options.
         
+       // Get File corresponding to oDoc
+       File oFile = oDocMap.get(oDoc);
+       
        try {
-           // Save the new file in the old directory with a _clean.dashboard.xml ending
-           String strPath = m_oDashboard.getParent()+"/"; // Represents directory. Add the trailing slash in anticipation of the save.
+ 		// Save the new file in the old directory with a _clean.dashboard.xml ending
+    	   	String strPath = oFile.getParent()+"/"; // Represents directory. Add the trailing slash in anticipation of the save.
+    	   	String strOldName = oFile.getName();
+		// Strip off old .dashboard.xml then rename ending.
+		String strNewName = strOldName.substring(0,strOldName.indexOf(".dashboard.xml")) + "_clean.dashboard.xml";
 
-           String strOldName = m_oDashboard.getName();
-           
-           // Strip off old .dashboard.xml then rename ending.
-           String strNewName = strOldName.substring(0,strOldName.indexOf(".dashboard.xml")) + "_clean.dashboard.xml";
-        
-        Transformer transformer = TransformerFactory.newInstance().newTransformer();
+		Transformer transformer = TransformerFactory.newInstance().newTransformer();
 
-        transformer.setOutputProperty(OutputKeys.METHOD, "xml");
-        transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+		transformer.setOutputProperty(OutputKeys.METHOD, "xml");
+		transformer.setOutputProperty(OutputKeys.INDENT, "yes");
 
-        Result output = new StreamResult(new File(strPath+strNewName));
-        m_oDoc.setXmlStandalone(true);
-        Source input = new DOMSource(m_oDoc);
-        transformer.transform(input, output);
+		Result output = new StreamResult(new File(strPath+strNewName));
+		oDoc.setXmlStandalone(true);
+		Source input = new DOMSource(oDoc);
+		transformer.transform(input, output);
         } catch (TransformerException ex) {
             System.out.println("Save Exception");
             return false;
