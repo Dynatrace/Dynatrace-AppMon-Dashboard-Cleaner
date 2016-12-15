@@ -15,3 +15,4 @@ It allows you to change:
 * Whether or not **drilldowns** open in a new window
 * The dashboard **colour scheme (day or night)**
 
+v1.2 now adds support for multiple dashboards within the same folder - just select the folder and all dashboards will be processed.
